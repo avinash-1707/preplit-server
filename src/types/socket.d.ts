@@ -1,10 +1,8 @@
 import "socket.io";
+import type { AuthUser } from "../lib/auth";
 
 declare module "socket.io" {
   interface Socket {
-    user?: {
-      userId: string;
-      name: string;
-    };
+    user?: AuthUser;
   }
 }

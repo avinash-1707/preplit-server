@@ -3,11 +3,18 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { fromNodeHeaders } from "better-auth/node";
 import { db } from "./db";
 
+export interface AuthUser {
+  id: string;
+  name: string;
+  role: string;
+}
+
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   database: drizzleAdapter(db, {
     provider: "pg",
   }),
+  user: { additionalFields: { role: { type: "string", input: false } } },
   emailAndPassword: { enabled: true },
   socialProviders: {
     google: {
@@ -21,6 +28,8 @@ export const auth = betterAuth({
   },
 });
 
+type Session = typeof auth.$Infer.Session;
+
 export async function validateSessionFromHeaders(headers: any) {
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(headers),
@@ -31,7 +40,8 @@ export async function validateSessionFromHeaders(headers: any) {
   }
 
   return {
-    userId: session.user.id,
+    id: session.user.id,
     name: session.user.name,
+    role: session.user.role,
   };
 }

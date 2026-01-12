@@ -1,5 +1,8 @@
 import nodemailer from "nodemailer";
-import { verificationEmailTemplate } from "./mailTemplates";
+import {
+  resetPasswordEmailTemplate,
+  verificationEmailTemplate,
+} from "./mailTemplates";
 
 // env validation
 function requireEnv(name: string): string {
@@ -37,6 +40,33 @@ export async function sendVerificationEmail({
   }
 
   const { subject, text, html } = verificationEmailTemplate({ url });
+
+  await transporter.sendMail({
+    from: requireEnv("MAIL_FROM"),
+    to,
+    subject,
+    text,
+    html,
+  });
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  url,
+  name,
+}: {
+  to: string;
+  url: string;
+  name: string;
+}): Promise<void> {
+  if (!to) {
+    throw new Error("Recipient email is required");
+  }
+
+  const { subject, text, html } = resetPasswordEmailTemplate({
+    url,
+    userName: name,
+  });
 
   await transporter.sendMail({
     from: requireEnv("MAIL_FROM"),

@@ -3,7 +3,10 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { fromNodeHeaders } from "better-auth/node";
 import { db } from "./db";
 import * as schema from "../db/index";
-import { sendVerificationEmail } from "../utils/sendEmail";
+import {
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "../utils/sendEmail";
 
 export interface AuthUser {
   id: string;
@@ -18,7 +21,18 @@ export const auth = betterAuth({
     schema,
   }),
   user: { additionalFields: { role: { type: "string", input: false } } },
-  emailAndPassword: { enabled: true, requireEmailVerification: true },
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url, token }, request) => {
+      void sendPasswordResetEmail({
+        to: user.email,
+        name: user.name,
+        url,
+      });
+    },
+  },
   emailVerification: {
     sendVerificationEmail: async ({ user, url, token }, request) => {
       void sendVerificationEmail({

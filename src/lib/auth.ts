@@ -1,4 +1,4 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type Account } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { fromNodeHeaders } from "better-auth/node";
 import { db } from "./db";
@@ -8,6 +8,11 @@ import {
   sendVerificationEmail,
   sendWelcomeEmail,
 } from "../utils/sendEmail";
+import { attachProviderImageIfMissing } from "../app/user/user.service";
+
+type AccountWithImage = Account & {
+  image?: string | null;
+};
 
 export interface AuthUser {
   id: string;
@@ -57,6 +62,27 @@ export const auth = betterAuth({
     github: {
       clientId: process.env.GITHUB_CLIENT_ID as string,
       clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+    },
+  },
+
+  account: {
+    accountLinking: { enabled: true },
+    additionalFields: {
+      image: {
+        type: "string",
+        required: false,
+      },
+    },
+  },
+
+  databaseHooks: {
+    account: {
+      create: {
+        after: async (account) => {
+          const acc = account as AccountWithImage;
+          await attachProviderImageIfMissing(acc.userId, acc.image);
+        },
+      },
     },
   },
 });

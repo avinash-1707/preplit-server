@@ -6,6 +6,7 @@ import * as schema from "../db/index";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
+  sendWelcomeEmail,
 } from "../utils/sendEmail";
 
 export interface AuthUser {
@@ -16,6 +17,7 @@ export interface AuthUser {
 
 export const auth = betterAuth({
   // baseURL: process.env.BETTER_AUTH_URL,
+  trustedOrigins: [process.env.CLIENT_URL!],
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,
@@ -39,6 +41,11 @@ export const auth = betterAuth({
         to: user.email,
         url,
       });
+    },
+    autoSignInAfterVerification: true,
+    async afterEmailVerification(user, request) {
+      void sendWelcomeEmail({ to: user.email, name: user.name });
+      console.log(`${user.email} has been successfully verified!`);
     },
   },
   socialProviders: {

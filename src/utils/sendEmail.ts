@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import {
   resetPasswordEmailTemplate,
   verificationEmailTemplate,
+  welcomeEmailTemplate,
 } from "./mailTemplates";
 
 // env validation
@@ -65,6 +66,30 @@ export async function sendPasswordResetEmail({
 
   const { subject, text, html } = resetPasswordEmailTemplate({
     url,
+    userName: name,
+  });
+
+  await transporter.sendMail({
+    from: requireEnv("MAIL_FROM"),
+    to,
+    subject,
+    text,
+    html,
+  });
+}
+
+export async function sendWelcomeEmail({
+  to,
+  name,
+}: {
+  to: string;
+  name: string;
+}): Promise<void> {
+  if (!to) {
+    throw new Error("Recipient email is required");
+  }
+
+  const { subject, text, html } = welcomeEmailTemplate({
     userName: name,
   });
 

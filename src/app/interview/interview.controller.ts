@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import * as interviewService from "../interview/interview.service";
+import { success } from "better-auth";
 
 export async function startInterview(req: Request, res: Response) {
   try {
@@ -62,6 +63,12 @@ export async function logEvent(req: Request, res: Response) {
     const { sessionProblemId, type, payload } = req.body;
 
     // Validation
+    if (!sessionId) {
+      return res.status(400).json({
+        error: "Missing required field: sessionId",
+      });
+    }
+
     if (!sessionProblemId || !type || !payload) {
       return res.status(400).json({
         error: "Missing required fields: sessionProblemId, type, payload",
@@ -116,6 +123,12 @@ export async function endInterview(req: Request, res: Response) {
       });
     }
 
+    if (!sessionId) {
+      return res.status(400).json({
+        error: "Missing required field: sessionId",
+      });
+    }
+
     const evaluation = await interviewService.endInterview(sessionId, userId);
 
     return res.status(200).json({
@@ -134,6 +147,11 @@ export async function endInterview(req: Request, res: Response) {
 export async function getEvaluation(req: Request, res: Response) {
   try {
     const { sessionId } = req.params;
+
+    if (!sessionId)
+      return res
+        .status(400)
+        .json({ success: false, message: "Session id missing!" });
 
     const evaluation = await interviewService.getEvaluation(sessionId);
 

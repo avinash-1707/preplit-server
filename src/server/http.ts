@@ -4,9 +4,14 @@ import { toNodeHandler } from "better-auth/node";
 import cookieParser from "cookie-parser";
 import { auth } from "../lib/auth";
 import interviewRoutes from "../app/interview/interview.route";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import { httpAuth } from "../middleware/httpAuth";
 
 export function createHttpApp() {
   const app = express();
+  const elevenlabs = new ElevenLabsClient({
+    apiKey: process.env.ELEVENLABS_API_KEY,
+  });
 
   app.use(
     cors({
@@ -22,6 +27,33 @@ export function createHttpApp() {
   app.use(express.json());
 
   app.use(express.urlencoded({ extended: true }));
+
+  app.get("/scribe-token", async (req, res) => {
+    try {
+      const { token } = await elevenlabs.tokens.singleUse.create("realtime_scribe");
+
+      console.log("Token generated:", token);
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          message: "Something went wrong while generating token",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: { token },
+      });
+    } catch (error) {
+      console.error("Token error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Server error!",
+      });
+    }
+  });
+
 
   // Routes
   app.use("/api/interviews", interviewRoutes);

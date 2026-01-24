@@ -28,7 +28,7 @@ export function createHttpApp() {
 
   app.use(express.urlencoded({ extended: true }));
 
-  app.get("/scribe-token", async (req, res) => {
+  app.get("/scribe-token", httpAuth, async (req, res) => {
     try {
       const { token } = await elevenlabs.tokens.singleUse.create("realtime_scribe");
 

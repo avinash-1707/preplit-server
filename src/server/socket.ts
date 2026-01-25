@@ -11,7 +11,7 @@ export function createSocketServer(httpServer: HttpServer) {
     },
   });
 
-  // io.use(socketAuth);
+  io.use(socketAuth);
 
   io.on("connection", (socket) => {
     let controller: AbortController | null = null;
@@ -25,8 +25,6 @@ export function createSocketServer(httpServer: HttpServer) {
 
         socket.emit("llm:start");
 
-        console.log("you reached the backend llm")
-
         await streamGemini({
           prompt: text,
           signal: controller.signal,
@@ -35,9 +33,12 @@ export function createSocketServer(httpServer: HttpServer) {
           },
         });
 
+        console.log("You reached the point after llm emit");
+
         socket.emit("llm:done");
       } catch (err: any) {
-        if (err.name === "AbortError") return;
+        if (err.name === "AbortError") console.log(err);
+        return;
 
         socket.emit("llm:error", {
           message: "Gemini streaming failed",

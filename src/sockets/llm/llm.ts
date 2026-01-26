@@ -10,7 +10,7 @@ export async function streamGemini({
     signal,
 }: {
     prompt: string;
-    onToken: (text: string) => void;
+    onToken: (token: string) => void;
     signal?: AbortSignal;
 }) {
     // Early abort check
@@ -35,6 +35,7 @@ export async function streamGemini({
             }
 
             const text = chunk.text;
+            console.log(text)
             if (text) {
                 onToken(text);
             }

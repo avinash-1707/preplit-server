@@ -37,8 +37,10 @@ export function createSocketServer(httpServer: HttpServer) {
 
         socket.emit("llm:done");
       } catch (err: any) {
-        if (err.name === "AbortError") console.log(err);
-        return;
+        if (err.name === "AbortError") {
+          console.log(err);
+          return;
+        }
 
         socket.emit("llm:error", {
           message: "Gemini streaming failed",

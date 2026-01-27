@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { socketAuth } from "../middleware/socketAuth";
 import { streamGemini } from "../sockets/llm/llm";
+import { streamTtsToSocket } from "../sockets/tts/streamTtsToSocket";
 
 export function createSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
@@ -29,11 +30,10 @@ export function createSocketServer(httpServer: HttpServer) {
           prompt: text,
           signal: controller.signal,
           onToken: (token: string) => {
-            socket.emit("llm:token", { token });
+            socket.emit("llm:token", { token })
+            streamTtsToSocket(socket, token);
           },
         });
-
-        console.log("You reached the point after llm emit");
 
         socket.emit("llm:done");
       } catch (err: any) {

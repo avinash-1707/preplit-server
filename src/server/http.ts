@@ -43,7 +43,7 @@ export function createHttpApp() {
 
       return res.status(200).json({
         success: true,
-        data: { token },
+        data: { token, expiresAt: 900000 },
       });
     } catch (error) {
       console.error("Token error:", error);

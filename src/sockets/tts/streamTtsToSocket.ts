@@ -23,7 +23,7 @@ export async function streamTtsToSocket(
         {
             modelId: "eleven_multilingual_v2",
             text,
-            outputFormat: "pcm_44100",
+            outputFormat: "mp3_44100_128",
             voiceSettings: {
                 stability: 0,
                 similarityBoost: 1.0,

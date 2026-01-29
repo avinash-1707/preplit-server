@@ -31,7 +31,8 @@ export function createSocketServer(httpServer: HttpServer) {
           signal: controller.signal,
           onToken: (token: string) => {
             socket.emit("llm:token", { token })
-            streamTtsToSocket(socket, token);
+            // on premium plan (elevenlabs tts)
+            // streamTtsToSocket(socket, token);
           },
         });
 

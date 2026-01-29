@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../lib/db";
-import { user } from "../../db";
+import { user, userInsight } from "../../db";
 
 export async function attachProviderImageIfMissing(
   userId: string,
@@ -17,4 +17,14 @@ export async function attachProviderImageIfMissing(
   if (!existing[0]?.image) {
     await db.update(user).set({ image }).where(eq(user.id, userId));
   }
+}
+
+export async function getUserInsightByUserId(userId: string) {
+  const result = await db
+    .select()
+    .from(userInsight)
+    .where(eq(userInsight.userId, userId))
+    .limit(1);
+
+  return result[0] ?? null;
 }

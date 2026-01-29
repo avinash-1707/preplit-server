@@ -8,15 +8,7 @@ import {
 } from "../../db/interview.schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../../lib/db";
-
-export interface StartInterviewInput {
-  candidateId: string;
-  language: string;
-  interviewType: string;
-  timeLimitSeconds?: number;
-  aiPersona?: string;
-  model?: string;
-}
+import type { StartInterviewRequest } from "../../types/interview.types";
 
 export interface LogEventInput {
   sessionProblemId: string;
@@ -37,7 +29,7 @@ export interface EvaluationResult {
   overallSummary?: string;
 }
 
-export async function startInterview(input: StartInterviewInput) {
+export async function startInterview(input: StartInterviewRequest) {
   // Create session
   const [session] = await db
     .insert(interviewSession)
@@ -47,10 +39,12 @@ export async function startInterview(input: StartInterviewInput) {
       interviewType: input.interviewType,
       timeLimitSeconds: input.timeLimitSeconds,
       aiPersona: input.aiPersona || "friendly",
-      model: input.model || "claude-sonnet-4-20250514",
+      model: input.model || "gemini-2.5-flash",
       status: "active",
     })
     .returning();
+
+  if (!session) return
 
   // Get problems based on interview type and difficulty
   const problems = await db
@@ -129,9 +123,6 @@ export async function endInterview(sessionId: string, userId: string) {
     })
     .returning();
 
-  // Update user insights
-  await updateUserInsights(userId, evaluation);
-
   return savedEvaluation;
 }
 
@@ -175,62 +166,4 @@ async function runAIEvaluation(
     overallSummary:
       "Good performance with room for improvement in advanced topics",
   };
-}
-
-async function updateUserInsights(
-  userId: string,
-  evaluation: EvaluationResult,
-) {
-  // Check if user insights exist
-  const existing = await db
-    .select()
-    .from(userInsight)
-    .where(eq(userInsight.userId, userId))
-    .limit(1);
-
-  if (existing.length > 0) {
-    // Update existing insights with weighted average
-    const current = existing[0];
-    const total = current.totalInterviews || 0;
-    const weight = total / (total + 1);
-    const newWeight = 1 / (total + 1);
-
-    await db
-      .update(userInsight)
-      .set({
-        problemSolving: Math.round(
-          (current.problemSolving || 0) * weight +
-            (evaluation.problemSolving || 0) * newWeight,
-        ),
-        coding: Math.round(
-          (current.coding || 0) * weight + (evaluation.coding || 0) * newWeight,
-        ),
-        debugging: Math.round(
-          (current.debugging || 0) * weight +
-            (evaluation.debugging || 0) * newWeight,
-        ),
-        dsa: Math.round(
-          (current.dsa || 0) * weight + (evaluation.dsa || 0) * newWeight,
-        ),
-        communication: Math.round(
-          (current.communication || 0) * weight +
-            (evaluation.communication || 0) * newWeight,
-        ),
-        totalInterviews: total + 1,
-        lastEvaluatedAt: new Date(),
-      })
-      .where(eq(userInsight.userId, userId));
-  } else {
-    // Create new insights
-    await db.insert(userInsight).values({
-      userId,
-      problemSolving: evaluation.problemSolving,
-      coding: evaluation.coding,
-      debugging: evaluation.debugging,
-      dsa: evaluation.dsa,
-      communication: evaluation.communication,
-      totalInterviews: 1,
-      lastEvaluatedAt: new Date(),
-    });
-  }
 }

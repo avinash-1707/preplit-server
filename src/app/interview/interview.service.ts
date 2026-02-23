@@ -6,7 +6,7 @@ import {
   userInsight,
   interviewProblem,
 } from "../../db/interview.schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { db } from "../../lib/db";
 import type { StartInterviewRequest } from "../../types/interview.types";
 
@@ -29,6 +29,46 @@ export interface EvaluationResult {
   overallSummary?: string;
 }
 
+export interface PaginationInput {
+  page: number;
+  limit: number;
+}
+
+export async function getInterviewsByCandidateId(
+  candidateId: string,
+  pagination: PaginationInput,
+) {
+  const offset = (pagination.page - 1) * pagination.limit;
+
+  const sessions = await db
+    .select()
+    .from(interviewSession)
+    .where(eq(interviewSession.candidateId, candidateId))
+    .orderBy(desc(interviewSession.createdAt))
+    .limit(pagination.limit)
+    .offset(offset);
+
+  const [countResult] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(interviewSession)
+    .where(eq(interviewSession.candidateId, candidateId));
+
+  const total = Number(countResult?.total ?? 0);
+  const totalPages = Math.ceil(total / pagination.limit);
+
+  return {
+    sessions,
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      totalPages,
+      hasNextPage: pagination.page < totalPages,
+      hasPrevPage: pagination.page > 1,
+    },
+  };
+}
+
 export async function startInterview(input: StartInterviewRequest) {
   // Create session
   const [session] = await db
@@ -44,7 +84,7 @@ export async function startInterview(input: StartInterviewRequest) {
     })
     .returning();
 
-  if (!session) return
+  if (!session) return;
 
   // Get problems based on interview type and difficulty
   const problems = await db

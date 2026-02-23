@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import * as interviewService from "../interview/interview.service";
-import { success } from "better-auth";
 
 export async function startInterview(req: Request, res: Response) {
   try {
@@ -170,6 +169,50 @@ export async function getEvaluation(req: Request, res: Response) {
 
     return res.status(500).json({
       error: "Failed to get evaluation",
+      message: error.message,
+    });
+  }
+}
+
+export async function getInterviews(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: "Unauthorized",
+      });
+    }
+
+    const pageValue = Number(req.query.page ?? 1);
+    const limitValue = Number(req.query.limit ?? 10);
+
+    if (!Number.isInteger(pageValue) || pageValue < 1) {
+      return res.status(400).json({
+        error: "Invalid page. Must be an integer >= 1",
+      });
+    }
+
+    if (!Number.isInteger(limitValue) || limitValue < 1 || limitValue > 100) {
+      return res.status(400).json({
+        error: "Invalid limit. Must be an integer between 1 and 100",
+      });
+    }
+
+    const result = await interviewService.getInterviewsByCandidateId(userId, {
+      page: pageValue,
+      limit: limitValue,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.sessions,
+      pagination: result.pagination,
+    });
+  } catch (error: any) {
+    console.error("Error getting interviews:", error);
+    return res.status(500).json({
+      error: "Failed to get interviews",
       message: error.message,
     });
   }

@@ -1,7 +1,16 @@
 import { Router } from "express";
 import * as interviewController from "../interview/interview.controller";
+import { httpAuth } from "../../middleware/httpAuth";
 
 const router = Router();
+
+/**
+ * @route   GET /api/interviews
+ * @desc    Get authenticated user's interview sessions (paginated)
+ * @access  Private
+ * @query   page?, limit?
+ */
+router.get("/", httpAuth, interviewController.getInterviews);
 
 /**
  * @route   POST /api/interviews

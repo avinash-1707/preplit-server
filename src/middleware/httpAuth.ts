@@ -1,35 +1,35 @@
-import type { FastifyRequest, FastifyReply } from "fastify";
+import type { FastifyRequest } from "fastify";
 import { validateSessionFromHeaders } from "../lib/auth";
+import { HttpError } from "../lib/httpError";
 
 /**
  * Fastify preHandler hook: authenticates from request headers and sets
- * request.user. Replies 401 (and halts the lifecycle) when unauthenticated.
+ * request.user. Throws (which reliably halts the Fastify lifecycle — a sent
+ * reply returned from an async hook does NOT) on failure; the error handler
+ * maps it to a 401 envelope.
  */
-export async function httpAuth(request: FastifyRequest, reply: FastifyReply) {
+export async function httpAuth(request: FastifyRequest) {
   try {
     request.user = await validateSessionFromHeaders(request.headers);
   } catch {
-    return reply.code(401).send({ error: "Unauthorized" });
+    throw new HttpError(401, "Unauthorized", "UNAUTHORIZED");
   }
 }
 
-export async function isAdmin(request: FastifyRequest, reply: FastifyReply) {
+export async function isAdmin(request: FastifyRequest) {
   if (!request.user) {
-    return reply.code(401).send({ error: "Unauthorized" });
+    throw new HttpError(401, "Unauthorized", "UNAUTHORIZED");
   }
   if (request.user.role !== "ADMIN") {
-    return reply.code(403).send({ error: "Admin access only" });
+    throw new HttpError(403, "Admin access only", "FORBIDDEN");
   }
 }
 
-export async function isInterviewer(
-  request: FastifyRequest,
-  reply: FastifyReply,
-) {
+export async function isInterviewer(request: FastifyRequest) {
   if (!request.user) {
-    return reply.code(401).send({ error: "Unauthorized" });
+    throw new HttpError(401, "Unauthorized", "UNAUTHORIZED");
   }
   if (request.user.role !== "INTERVIEWER" && request.user.role !== "ADMIN") {
-    return reply.code(403).send({ error: "Interviewer access only" });
+    throw new HttpError(403, "Interviewer access only", "FORBIDDEN");
   }
 }

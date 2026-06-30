@@ -31,16 +31,32 @@ export async function createHttpApp(): Promise<FastifyInstance> {
   // plugins. Better Auth manages Set-Cookie through the response headers, so no
   // cookie plugin is required here.
   app.route({
-    method: ["GET", "POST"],
+    // Match the breadth of the old Express `app.all` so no Better Auth verb
+    // (e.g. revoke/update/delete endpoints) falls through to the 404 handler.
+    // OPTIONS preflight is handled by @fastify/cors.
+    method: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     url: "/api/auth/*",
     async handler(request, reply) {
       try {
+        // Host is used only to give auth.handler a path+query to route on;
+        // Better Auth derives its security-sensitive base URL from its own
+        // config / trustedOrigins, not from this reconstructed URL.
         const url = new URL(request.url, `http://${request.headers.host}`);
         const headers = fromNodeHeaders(request.headers);
+
+        const hasBody = request.body != null;
+        if (hasBody) {
+          // Fastify already parsed the JSON body. We re-serialize it, so make
+          // the content-type match and drop the stale content-length (which
+          // reflected the original raw bytes, not the re-serialized string).
+          headers.set("content-type", "application/json");
+          headers.delete("content-length");
+        }
+
         const req = new Request(url.toString(), {
           method: request.method,
           headers,
-          ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+          ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
         });
 
         const response = await auth.handler(req);
@@ -58,7 +74,7 @@ export async function createHttpApp(): Promise<FastifyInstance> {
           reply.header("set-cookie", cookie);
         }
 
-        return reply.send(response.body ? await response.text() : null);
+        return reply.send(response.body ? await response.text() : "");
       } catch (error) {
         console.error("Authentication error:", error);
         return reply
@@ -104,16 +120,25 @@ export async function createHttpApp(): Promise<FastifyInstance> {
     message: "Preplit backend running fine!",
   }));
 
-  // Error + not-found handlers.
+  // Error + not-found handlers. Honors statusCode/code carried by HttpError
+  // (thrown from preHandler hooks) and keeps 500s from leaking details.
   app.setErrorHandler((error, _request, reply) => {
-    console.error("Unhandled error:", error);
-    reply.status(500).send({
-      error: "Internal server error",
-      message:
-        process.env.NODE_ENV === "development" && error instanceof Error
-          ? error.message
-          : undefined,
-    });
+    const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
+    const code = (error as { code?: string }).code;
+    if (statusCode >= 500) {
+      console.error("Unhandled error:", error);
+      return reply.status(500).send({
+        error: "Internal server error",
+        message:
+          process.env.NODE_ENV === "development" && error instanceof Error
+            ? error.message
+            : undefined,
+      });
+    }
+    const message = error instanceof Error ? error.message : "Request failed";
+    return reply
+      .status(statusCode)
+      .send(code ? err(message, code) : err(message));
   });
 
   app.setNotFoundHandler((_request, reply) => {

@@ -1,18 +1,19 @@
-import type { FastifyRequest, FastifyReply } from "fastify";
+import type { FastifyRequest } from "fastify";
 import type { ZodType } from "zod";
-import { err } from "../contract/envelope";
+import { HttpError } from "../lib/httpError";
 
 /**
  * Fastify preHandler factory: validates request parts against contract Zod
- * schemas and stashes the parsed (coerced) values on request.valid. Replies 400
- * (and halts) on the first validation failure.
+ * schemas and stashes the parsed (coerced) values on request.valid. Throws an
+ * HttpError(400) on the first validation failure — throwing (not returning a
+ * sent reply) is what reliably halts the Fastify lifecycle before the handler.
  */
 export function validate(schemas: {
   body?: ZodType;
   query?: ZodType;
   params?: ZodType;
 }) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return async (request: FastifyRequest) => {
     try {
       const valid: { body?: unknown; query?: unknown; params?: unknown } = {};
       if (schemas.params) valid.params = schemas.params.parse(request.params);
@@ -22,7 +23,7 @@ export function validate(schemas: {
     } catch (e: any) {
       const message =
         e?.issues?.[0]?.message ?? e?.message ?? "Invalid request";
-      return reply.code(400).send(err(message, "VALIDATION"));
+      throw new HttpError(400, message, "VALIDATION");
     }
   };
 }

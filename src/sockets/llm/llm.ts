@@ -4,14 +4,18 @@ const genAI = new GoogleGenAI({
     apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
 });
 
+const DEFAULT_MODEL = "gemini-3-flash-preview";
+
 export async function streamGemini({
     prompt,
     onToken,
     signal,
+    model = DEFAULT_MODEL,
 }: {
     prompt: string;
     onToken: (token: string) => void;
     signal?: AbortSignal;
+    model?: string;
 }) {
     // Early abort check
     if (signal?.aborted) {
@@ -19,7 +23,7 @@ export async function streamGemini({
     }
 
     const result = await genAI.models.generateContentStream({
-        model: "gemini-3-flash-preview",
+        model,
         contents: [
             {
                 role: "user",
@@ -35,7 +39,6 @@ export async function streamGemini({
             }
 
             const text = chunk.text;
-            console.log(text)
             if (text) {
                 onToken(text);
             }

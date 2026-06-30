@@ -3,10 +3,9 @@ import {
   interviewSessionProblem,
   interviewEvent,
   interviewEvaluation,
-  userInsight,
   interviewProblem,
 } from "../../db/interview.schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "../../lib/db";
 import type { StartInterviewRequest } from "../../types/interview.types";
 
@@ -17,21 +16,66 @@ export interface LogEventInput {
 }
 
 export interface EvaluationResult {
-  problemSolving?: number;
-  coding?: number;
-  debugging?: number;
-  dsa?: number;
-  communication?: number;
-  overallScore?: number;
-  strengthsText?: string;
-  weaknessesText?: string;
-  improvementText?: string;
-  overallSummary?: string;
+  problemSolving?: number | null;
+  coding?: number | null;
+  debugging?: number | null;
+  dsa?: number | null;
+  communication?: number | null;
+  overallScore?: number | null;
+  strengthsText?: string | null;
+  weaknessesText?: string | null;
+  improvementText?: string | null;
+  overallSummary?: string | null;
 }
 
 export interface PaginationInput {
   page: number;
   limit: number;
+}
+
+/**
+ * Typed errors so the controller can map them to HTTP status codes without
+ * leaking internals or guessing from string matching.
+ */
+export class NotFoundError extends Error {
+  constructor(message = "Not found") {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
+export class ForbiddenError extends Error {
+  constructor(message = "Forbidden") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+export class ValidationError extends Error {
+  constructor(message = "Invalid request") {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+/**
+ * Loads a session and asserts it belongs to `userId`.
+ * Throws NotFoundError if it doesn't exist, ForbiddenError if owned by someone else.
+ */
+async function loadOwnedSession(sessionId: string, userId: string) {
+  const [session] = await db
+    .select()
+    .from(interviewSession)
+    .where(eq(interviewSession.id, sessionId))
+    .limit(1);
+
+  if (!session) {
+    throw new NotFoundError("Interview session not found");
+  }
+  if (session.candidateId !== userId) {
+    throw new ForbiddenError("You do not have access to this interview session");
+  }
+  return session;
 }
 
 export async function getInterviewsByCandidateId(
@@ -70,6 +114,7 @@ export async function getInterviewsByCandidateId(
 }
 
 export async function startInterview(input: StartInterviewRequest) {
+  // The candidate is always the authenticated caller (set by the controller).
   // Create session
   const [session] = await db
     .insert(interviewSession)
@@ -84,14 +129,24 @@ export async function startInterview(input: StartInterviewRequest) {
     })
     .returning();
 
-  if (!session) return;
+  if (!session) {
+    throw new Error("Failed to create interview session");
+  }
 
-  // Get problems based on interview type and difficulty
+  // Get problems based on interview type
   const problems = await db
     .select()
     .from(interviewProblem)
     .where(eq(interviewProblem.topic, input.interviewType))
     .limit(3);
+
+  if (problems.length === 0) {
+    // No problem bank for this interview type — fail loudly instead of
+    // attempting an empty insert (Drizzle throws on `values([])`).
+    throw new ValidationError(
+      `No problems are configured for interview type "${input.interviewType}"`,
+    );
+  }
 
   // Create session problems
   const sessionProblems = await db
@@ -113,7 +168,32 @@ export async function startInterview(input: StartInterviewRequest) {
   };
 }
 
-export async function logEvent(sessionId: string, input: LogEventInput) {
+export async function logEvent(
+  sessionId: string,
+  userId: string,
+  input: LogEventInput,
+) {
+  // Ownership check before any write.
+  await loadOwnedSession(sessionId, userId);
+
+  // The session problem must belong to this session.
+  const [sessionProblem] = await db
+    .select()
+    .from(interviewSessionProblem)
+    .where(
+      and(
+        eq(interviewSessionProblem.id, input.sessionProblemId),
+        eq(interviewSessionProblem.sessionId, sessionId),
+      ),
+    )
+    .limit(1);
+
+  if (!sessionProblem) {
+    throw new ValidationError(
+      "sessionProblemId does not belong to this session",
+    );
+  }
+
   const event = await db
     .insert(interviewEvent)
     .values({
@@ -128,82 +208,112 @@ export async function logEvent(sessionId: string, input: LogEventInput) {
 }
 
 export async function endInterview(sessionId: string, userId: string) {
-  // Update session status
-  await db
-    .update(interviewSession)
-    .set({
-      status: "completed",
-      endedAt: new Date(),
-    })
-    .where(eq(interviewSession.id, sessionId));
+  const session = await loadOwnedSession(sessionId, userId);
 
-  // Get all events for evaluation
+  // Idempotency: if this session was already evaluated, return the existing
+  // evaluation instead of inserting a duplicate (the unique constraint on
+  // interview_evaluation.sessionId would otherwise raise a 500 on replay).
+  const [existing] = await db
+    .select()
+    .from(interviewEvaluation)
+    .where(eq(interviewEvaluation.sessionId, sessionId))
+    .limit(1);
+
+  if (existing) {
+    return existing;
+  }
+
+  // Gather signal for evaluation.
   const events = await db
     .select()
     .from(interviewEvent)
     .where(eq(interviewEvent.sessionId, sessionId))
     .orderBy(desc(interviewEvent.createdAt));
 
-  // Get session problems
   const sessionProblems = await db
     .select()
     .from(interviewSessionProblem)
     .where(eq(interviewSessionProblem.sessionId, sessionId));
 
-  // Run AI evaluation
   const evaluation = await runAIEvaluation(events, sessionProblems);
 
-  // Save evaluation
-  const [savedEvaluation] = await db
-    .insert(interviewEvaluation)
-    .values({
-      sessionId,
-      userId,
-      ...evaluation,
-    })
-    .returning();
+  // NOTE: the neon-http driver does not support interactive transactions, so
+  // these two writes are not atomic. Ordering is chosen so a partial failure
+  // is safe and retryable: insert the evaluation FIRST (the unique constraint
+  // + the idempotency check above make a retry safe), then flip the session
+  // status. If the status update fails, a subsequent call short-circuits on
+  // `existing` and still completes.
+  let savedEvaluation;
+  try {
+    [savedEvaluation] = await db
+      .insert(interviewEvaluation)
+      .values({
+        sessionId,
+        userId,
+        ...evaluation,
+      })
+      .returning();
+  } catch (err: any) {
+    // Concurrent double-submit: another request inserted first. Return theirs.
+    const [raced] = await db
+      .select()
+      .from(interviewEvaluation)
+      .where(eq(interviewEvaluation.sessionId, sessionId))
+      .limit(1);
+    if (raced) return raced;
+    throw err;
+  }
+
+  if (session.status !== "completed") {
+    await db
+      .update(interviewSession)
+      .set({ status: "completed", endedAt: new Date() })
+      .where(eq(interviewSession.id, sessionId));
+  }
 
   return savedEvaluation;
 }
 
-export async function getEvaluation(sessionId: string) {
-  const evaluation = await db
+export async function getEvaluation(sessionId: string, userId: string) {
+  await loadOwnedSession(sessionId, userId);
+
+  const [evaluation] = await db
     .select()
     .from(interviewEvaluation)
     .where(eq(interviewEvaluation.sessionId, sessionId))
     .limit(1);
 
-  if (!evaluation.length) {
-    throw new Error("Evaluation not found");
+  if (!evaluation) {
+    throw new NotFoundError("Evaluation not found");
   }
 
-  return evaluation[0];
+  return evaluation;
 }
 
+/**
+ * Placeholder evaluation. The real scoring model is not implemented yet, so we
+ * do NOT fabricate numbers — scores are left null and the summary states that
+ * evaluation is pending. This avoids persisting random data that users would
+ * read as a real assessment.
+ *
+ * TODO: implement real evaluation from `events` (code submissions, AI
+ * interactions, etc.) against each problem's rubric.
+ */
 async function runAIEvaluation(
-  events: any[],
-  sessionProblems: any[],
+  _events: any[],
+  _sessionProblems: any[],
 ): Promise<EvaluationResult> {
-  // TODO: Implement actual AI evaluation logic
-  // This would analyze events (code submissions, AI interactions, etc.)
-  // and generate scores based on the rubric
-
-  // Placeholder implementation
-  const codeEvents = events.filter((e) => e.type.startsWith("code:"));
-  const aiEvents = events.filter((e) => e.type.startsWith("ai:"));
-
   return {
-    problemSolving: Math.floor(Math.random() * 40) + 60,
-    coding: Math.floor(Math.random() * 40) + 60,
-    debugging: Math.floor(Math.random() * 40) + 60,
-    dsa: Math.floor(Math.random() * 40) + 60,
-    communication: Math.floor(Math.random() * 40) + 60,
-    overallScore: Math.floor(Math.random() * 40) + 60,
-    strengthsText: "Strong problem-solving approach and clear communication",
-    weaknessesText: "Could improve code optimization and edge case handling",
-    improvementText:
-      "Practice more algorithmic problems and focus on time complexity",
+    problemSolving: null,
+    coding: null,
+    debugging: null,
+    dsa: null,
+    communication: null,
+    overallScore: null,
+    strengthsText: null,
+    weaknessesText: null,
+    improvementText: null,
     overallSummary:
-      "Good performance with room for improvement in advanced topics",
+      "Automated evaluation is not yet available for this session.",
   };
 }

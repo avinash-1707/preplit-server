@@ -4,6 +4,7 @@ import { toNodeHandler } from "better-auth/node";
 import cookieParser from "cookie-parser";
 import { auth } from "../lib/auth";
 import interviewRoutes from "../app/interview/interview.route";
+import userRoutes from "../app/user/user.route";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { httpAuth } from "../middleware/httpAuth";
 
@@ -32,8 +33,6 @@ export function createHttpApp() {
     try {
       const { token } = await elevenlabs.tokens.singleUse.create("realtime_scribe");
 
-      console.log("Token generated:", token);
-
       if (!token) {
         return res.status(400).json({
           success: false,
@@ -57,6 +56,7 @@ export function createHttpApp() {
 
   // Routes
   app.use("/api/interviews", interviewRoutes);
+  app.use("/api/users", userRoutes);
 
   // Error handling middleware
   app.use(

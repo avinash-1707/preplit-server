@@ -1,21 +1,42 @@
 import type { Request, Response } from "express";
 import * as interviewService from "../interview/interview.service";
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../interview/interview.service";
+
+/**
+ * Maps a thrown service error to an HTTP response. Keeps controllers DRY and
+ * ensures ownership/validation errors never surface as a generic 500.
+ */
+function handleError(res: Response, error: any, fallbackMsg: string) {
+  if (error instanceof ValidationError) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (error instanceof ForbiddenError) {
+    return res.status(403).json({ error: error.message });
+  }
+  if (error instanceof NotFoundError) {
+    return res.status(404).json({ error: error.message });
+  }
+  console.error(`${fallbackMsg}:`, error);
+  return res.status(500).json({ error: fallbackMsg });
+}
 
 export async function startInterview(req: Request, res: Response) {
   try {
-    const {
-      candidateId,
-      language,
-      interviewType,
-      timeLimitSeconds,
-      aiPersona,
-      model,
-    } = req.body;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    // Validation
-    if (!candidateId || !language || !interviewType) {
+    const { language, interviewType, timeLimitSeconds, aiPersona, model } =
+      req.body;
+
+    if (!language || !interviewType) {
       return res.status(400).json({
-        error: "Missing required fields: candidateId, language, interviewType",
+        error: "Missing required fields: language, interviewType",
       });
     }
 
@@ -34,8 +55,9 @@ export async function startInterview(req: Request, res: Response) {
       });
     }
 
+    // Identity comes from the authenticated session, never from the body.
     const result = await interviewService.startInterview({
-      candidateId,
+      candidateId: userId,
       language,
       interviewType,
       timeLimitSeconds,
@@ -43,29 +65,24 @@ export async function startInterview(req: Request, res: Response) {
       model,
     });
 
-    return res.status(201).json({
-      success: true,
-      data: result,
-    });
+    return res.status(201).json({ success: true, data: result });
   } catch (error: any) {
-    console.error("Error starting interview:", error);
-    return res.status(500).json({
-      error: "Failed to start interview",
-      message: error.message,
-    });
+    return handleError(res, error, "Failed to start interview");
   }
 }
 
 export async function logEvent(req: Request, res: Response) {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const { sessionId } = req.params;
     const { sessionProblemId, type, payload } = req.body;
 
-    // Validation
     if (!sessionId) {
-      return res.status(400).json({
-        error: "Missing required field: sessionId",
-      });
+      return res.status(400).json({ error: "Missing required field: sessionId" });
     }
 
     if (!sessionProblemId || !type || !payload) {
@@ -92,85 +109,57 @@ export async function logEvent(req: Request, res: Response) {
       });
     }
 
-    const event = await interviewService.logEvent(sessionId, {
+    const event = await interviewService.logEvent(sessionId, userId, {
       sessionProblemId,
       type,
       payload,
     });
 
-    return res.status(201).json({
-      success: true,
-      data: event,
-    });
+    return res.status(201).json({ success: true, data: event });
   } catch (error: any) {
-    console.error("Error logging event:", error);
-    return res.status(500).json({
-      error: "Failed to log event",
-      message: error.message,
-    });
+    return handleError(res, error, "Failed to log event");
   }
 }
 
 export async function endInterview(req: Request, res: Response) {
   try {
-    const { sessionId } = req.params;
-    const { userId } = req.body;
-
+    const userId = req.user?.id;
     if (!userId) {
-      return res.status(400).json({
-        error: "Missing required field: userId",
-      });
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
+    const { sessionId } = req.params;
     if (!sessionId) {
-      return res.status(400).json({
-        error: "Missing required field: sessionId",
-      });
+      return res.status(400).json({ error: "Missing required field: sessionId" });
     }
 
     const evaluation = await interviewService.endInterview(sessionId, userId);
 
-    return res.status(200).json({
-      success: true,
-      data: evaluation,
-    });
+    return res.status(200).json({ success: true, data: evaluation });
   } catch (error: any) {
-    console.error("Error ending interview:", error);
-    return res.status(500).json({
-      error: "Failed to end interview",
-      message: error.message,
-    });
+    return handleError(res, error, "Failed to end interview");
   }
 }
 
 export async function getEvaluation(req: Request, res: Response) {
   try {
-    const { sessionId } = req.params;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    if (!sessionId)
+    const { sessionId } = req.params;
+    if (!sessionId) {
       return res
         .status(400)
         .json({ success: false, message: "Session id missing!" });
-
-    const evaluation = await interviewService.getEvaluation(sessionId);
-
-    return res.status(200).json({
-      success: true,
-      data: evaluation,
-    });
-  } catch (error: any) {
-    console.error("Error getting evaluation:", error);
-
-    if (error.message === "Evaluation not found") {
-      return res.status(404).json({
-        error: "Evaluation not found for this session",
-      });
     }
 
-    return res.status(500).json({
-      error: "Failed to get evaluation",
-      message: error.message,
-    });
+    const evaluation = await interviewService.getEvaluation(sessionId, userId);
+
+    return res.status(200).json({ success: true, data: evaluation });
+  } catch (error: any) {
+    return handleError(res, error, "Failed to get evaluation");
   }
 }
 
@@ -179,9 +168,7 @@ export async function getInterviews(req: Request, res: Response) {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
-        error: "Unauthorized",
-      });
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
     const pageValue = Number(req.query.page ?? 1);
@@ -210,10 +197,6 @@ export async function getInterviews(req: Request, res: Response) {
       pagination: result.pagination,
     });
   } catch (error: any) {
-    console.error("Error getting interviews:", error);
-    return res.status(500).json({
-      error: "Failed to get interviews",
-      message: error.message,
-    });
+    return handleError(res, error, "Failed to get interviews");
   }
 }

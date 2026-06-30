@@ -5,6 +5,7 @@ import {
   timestamp,
   integer,
   jsonb,
+  unique,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth.schema";
 
@@ -79,25 +80,31 @@ export const interviewSession = pgTable("interview_session", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const interviewSessionProblem = pgTable("interview_session_problem", {
-  id: uuid("id").defaultRandom().primaryKey(),
+export const interviewSessionProblem = pgTable(
+  "interview_session_problem",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
 
-  sessionId: uuid("session_id")
-    .references(() => interviewSession.id, { onDelete: "cascade" })
-    .notNull(),
+    sessionId: uuid("session_id")
+      .references(() => interviewSession.id, { onDelete: "cascade" })
+      .notNull(),
 
-  problemId: uuid("problem_id")
-    .references(() => interviewProblem.id)
-    .notNull(),
+    problemId: uuid("problem_id")
+      .references(() => interviewProblem.id, { onDelete: "restrict" })
+      .notNull(),
 
-  order: integer("order").notNull(),
+    order: integer("order").notNull(),
 
-  status: text("status").default("pending"),
-  // pending | active | completed | skipped
+    status: text("status").default("pending"),
+    // pending | active | completed | skipped
 
-  startedAt: timestamp("started_at"),
-  endedAt: timestamp("ended_at"),
-});
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+  },
+  (table) => [
+    unique("session_problem_unique").on(table.sessionId, table.problemId),
+  ],
+);
 
 export const interviewEvent = pgTable("interview_event", {
   id: uuid("id").defaultRandom().primaryKey(),

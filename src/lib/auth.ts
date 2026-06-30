@@ -20,9 +20,20 @@ export interface AuthUser {
   role: string;
 }
 
+// Support one or more comma-separated client origins; drop empty/undefined
+// entries so a missing CLIENT_URL doesn't produce `[undefined]`.
+const trustedOrigins = (process.env.CLIENT_URL ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+if (trustedOrigins.length === 0) {
+  throw new Error("CLIENT_URL must be set (one or more comma-separated origins)");
+}
+
 export const auth = betterAuth({
   // baseURL: process.env.BETTER_AUTH_URL,
-  trustedOrigins: [process.env.CLIENT_URL!],
+  trustedOrigins,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,

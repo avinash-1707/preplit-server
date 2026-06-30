@@ -14,33 +14,36 @@ router.get("/", httpAuth, interviewController.getInterviews);
 
 /**
  * @route   POST /api/interviews
- * @desc    Start a new interview session
+ * @desc    Start a new interview session (owned by the authenticated user)
  * @access  Private
- * @body    { candidateId, language, interviewType, timeLimitSeconds?, aiPersona?, model? }
+ * @body    { language, interviewType, timeLimitSeconds?, aiPersona?, model? }
  */
-router.post("/", interviewController.startInterview);
+router.post("/", httpAuth, interviewController.startInterview);
 
 /**
  * @route   POST /api/interviews/:sessionId/events
- * @desc    Log an event during the interview
+ * @desc    Log an event during the interview (must own the session)
  * @access  Private
  * @body    { sessionProblemId, type, payload }
  */
-router.post("/:sessionId/events", interviewController.logEvent);
+router.post("/:sessionId/events", httpAuth, interviewController.logEvent);
 
 /**
  * @route   POST /api/interviews/:sessionId/end
- * @desc    End interview and generate evaluation
+ * @desc    End interview and generate evaluation (must own the session)
  * @access  Private
- * @body    { userId }
  */
-router.post("/:sessionId/end", interviewController.endInterview);
+router.post("/:sessionId/end", httpAuth, interviewController.endInterview);
 
 /**
  * @route   GET /api/interviews/:sessionId/evaluation
- * @desc    Get evaluation for a completed interview
+ * @desc    Get evaluation for a completed interview (must own the session)
  * @access  Private
  */
-router.get("/:sessionId/evaluation", interviewController.getEvaluation);
+router.get(
+  "/:sessionId/evaluation",
+  httpAuth,
+  interviewController.getEvaluation,
+);
 
 export default router;

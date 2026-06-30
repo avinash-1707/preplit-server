@@ -1,3 +1,15 @@
+// Escape values interpolated into email HTML to prevent HTML/attribute
+// injection (defense-in-depth; `url` is auth-generated but `userName` is
+// user-supplied).
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 type VerificationTemplateProps = {
   url: string;
 };
@@ -12,6 +24,7 @@ type WelcomeTemplateProps = {
 };
 
 export function verificationEmailTemplate({ url }: VerificationTemplateProps) {
+  const safeUrl = escapeHtml(url);
   return {
     subject: "Verify your email address",
     text: `Click the link to verify your email: ${url}`,
@@ -35,7 +48,7 @@ export function verificationEmailTemplate({ url }: VerificationTemplateProps) {
           </p>
           
           <div style="margin: 30px 0;">
-            <a href="${url}" 
+            <a href="${safeUrl}"
                style="
                  display: block;
                  padding: 12px 20px;
@@ -49,15 +62,15 @@ export function verificationEmailTemplate({ url }: VerificationTemplateProps) {
               VERIFY EMAIL
             </a>
           </div>
-          
+
           <div style="border-top: 1px solid #000000; margin: 30px 0;"></div>
-          
+
           <p style="color: #666666; font-size: 12px; line-height: 1.6; margin: 0;">
             If you did not create this account, ignore this email.
           </p>
-          
+
           <p style="color: #999999; font-size: 11px; line-height: 1.6; margin: 20px 0 0 0; word-break: break-all;">
-            ${url}
+            ${safeUrl}
           </p>
           
         </div>
@@ -70,6 +83,8 @@ export function resetPasswordEmailTemplate({
   url,
   userName,
 }: ResetPasswordTemplateProps) {
+  const safeUrl = escapeHtml(url);
+  const safeName = escapeHtml(userName);
   return {
     subject: "Reset your password",
     text: `Click the link to reset your password: ${url}`,
@@ -90,7 +105,7 @@ export function resetPasswordEmailTemplate({
           
           ${
             userName
-              ? `<p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">${userName},</p>`
+              ? `<p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">${safeName},</p>`
               : ""
           }
           
@@ -99,7 +114,7 @@ export function resetPasswordEmailTemplate({
           </p>
           
           <div style="margin: 30px 0;">
-            <a href="${url}" 
+            <a href="${safeUrl}"
                style="
                  display: block;
                  padding: 12px 20px;
@@ -123,7 +138,7 @@ export function resetPasswordEmailTemplate({
           <div style="border-top: 1px solid #000000; margin: 30px 0;"></div>
           
           <p style="color: #999999; font-size: 11px; line-height: 1.6; margin: 0; word-break: break-all;">
-            ${url}
+            ${safeUrl}
           </p>
           
         </div>
@@ -133,6 +148,7 @@ export function resetPasswordEmailTemplate({
 }
 
 export function welcomeEmailTemplate({ userName }: WelcomeTemplateProps) {
+  const safeName = escapeHtml(userName);
   return {
     subject: "Welcome to Preplit",
     text: `${userName}, welcome to Preplit.`,
@@ -152,9 +168,9 @@ export function welcomeEmailTemplate({ userName }: WelcomeTemplateProps) {
           <div style="border-top: 1px solid #000000; margin-bottom: 30px;"></div>
           
           <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">
-            ${userName},
+            ${safeName},
           </p>
-          
+
           <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">
             Your account has been verified. You can now access all features.
           </p>

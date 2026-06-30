@@ -1,15 +1,21 @@
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import type { Socket } from "socket.io";
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+// Lazily initialise the client so importing this module never crashes server
+// boot when TTS is disabled / the key is absent. The key is only required at
+// the moment TTS is actually used.
+let elevenlabs: ElevenLabsClient | null = null;
 
-if (!ELEVENLABS_API_KEY) {
-    throw new Error("Missing ELEVENLABS_API_KEY in environment variables");
+function getClient(): ElevenLabsClient {
+    if (!elevenlabs) {
+        const apiKey = process.env.ELEVENLABS_API_KEY;
+        if (!apiKey) {
+            throw new Error("Missing ELEVENLABS_API_KEY in environment variables");
+        }
+        elevenlabs = new ElevenLabsClient({ apiKey });
+    }
+    return elevenlabs;
 }
-
-const elevenlabs = new ElevenLabsClient({
-    apiKey: ELEVENLABS_API_KEY,
-});
 
 
 //Streams ElevenLabs PCM audio directly to a socket
@@ -18,7 +24,7 @@ export async function streamTtsToSocket(
     socket: Socket,
     text: string
 ) {
-    const audioStream = await elevenlabs.textToSpeech.stream(
+    const audioStream = await getClient().textToSpeech.stream(
         "JBFqnCBsd6RMkjVDRZzb",
         {
             modelId: "eleven_multilingual_v2",

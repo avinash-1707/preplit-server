@@ -7,6 +7,7 @@ import interviewRoutes from "../app/interview/interview.route";
 import userRoutes from "../app/user/user.route";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { httpAuth } from "../middleware/httpAuth";
+import { ok, err } from "../contract/envelope";
 
 export function createHttpApp() {
   const app = express();
@@ -34,22 +35,16 @@ export function createHttpApp() {
       const { token } = await elevenlabs.tokens.singleUse.create("realtime_scribe");
 
       if (!token) {
-        return res.status(400).json({
-          success: false,
-          message: "Something went wrong while generating token",
-        });
+        return res
+          .status(400)
+          .json(err("Something went wrong while generating token", "TOKEN"));
       }
 
-      return res.status(200).json({
-        success: true,
-        data: { token, expiresAt: 900000 },
-      });
+      // expiresAt is an ABSOLUTE epoch-ms timestamp (token TTL is ~15 min).
+      return res.status(200).json(ok({ token, expiresAt: Date.now() + 900_000 }));
     } catch (error) {
       console.error("Token error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Server error!",
-      });
+      return res.status(500).json(err("Server error!", "INTERNAL"));
     }
   });
 

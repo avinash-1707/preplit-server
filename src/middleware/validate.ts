@@ -1,40 +1,28 @@
-import type { Request, Response, NextFunction } from "express";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import type { ZodType } from "zod";
 import { err } from "../contract/envelope";
 
-export interface ValidatedData {
-  body?: unknown;
-  query?: unknown;
-  params?: unknown;
-}
-
 /**
- * Validates request parts against contract Zod schemas. Parsed (and coerced)
- * values are placed on `res.locals.valid` — controllers read from there.
- *
- * NOTE: in Express 5 `req.query` is a read-only getter, so we never reassign
- * it; only `req.body` is safely reassignable.
+ * Fastify preHandler factory: validates request parts against contract Zod
+ * schemas and stashes the parsed (coerced) values on request.valid. Replies 400
+ * (and halts) on the first validation failure.
  */
 export function validate(schemas: {
   body?: ZodType;
   query?: ZodType;
   params?: ZodType;
 }) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const valid: ValidatedData = {};
-      if (schemas.params) valid.params = schemas.params.parse(req.params);
-      if (schemas.query) valid.query = schemas.query.parse(req.query);
-      if (schemas.body) {
-        valid.body = schemas.body.parse(req.body);
-        req.body = valid.body;
-      }
-      res.locals.valid = valid;
-      next();
+      const valid: { body?: unknown; query?: unknown; params?: unknown } = {};
+      if (schemas.params) valid.params = schemas.params.parse(request.params);
+      if (schemas.query) valid.query = schemas.query.parse(request.query);
+      if (schemas.body) valid.body = schemas.body.parse(request.body);
+      request.valid = valid;
     } catch (e: any) {
       const message =
         e?.issues?.[0]?.message ?? e?.message ?? "Invalid request";
-      return res.status(400).json(err(message, "VALIDATION"));
+      return reply.code(400).send(err(message, "VALIDATION"));
     }
   };
 }

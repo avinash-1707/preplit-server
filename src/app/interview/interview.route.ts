@@ -1,4 +1,4 @@
-import { Router } from "express";
+import type { FastifyInstance } from "fastify";
 import * as interviewController from "../interview/interview.controller";
 import { httpAuth } from "../../middleware/httpAuth";
 import { validate } from "../../middleware/validate";
@@ -9,67 +9,43 @@ import {
   listInterviewsQuery,
 } from "../../contract/interview";
 
-const router = Router();
-
 /**
- * @route   GET /api/interviews
- * @desc    Get authenticated user's interview sessions (paginated)
- * @access  Private
- * @query   page?, limit?
+ * Interview routes (Fastify plugin). Registered with prefix /api/interviews.
+ * Every route is gated by httpAuth; inputs are validated against the contract.
  */
-router.get(
-  "/",
-  httpAuth,
-  validate({ query: listInterviewsQuery }),
-  interviewController.getInterviews,
-);
+export default async function interviewRoutes(app: FastifyInstance) {
+  app.get(
+    "/",
+    { preHandler: [httpAuth, validate({ query: listInterviewsQuery })] },
+    interviewController.getInterviews,
+  );
 
-/**
- * @route   POST /api/interviews
- * @desc    Start a new interview session (owned by the authenticated user)
- * @access  Private
- */
-router.post(
-  "/",
-  httpAuth,
-  validate({ body: startInterviewBody }),
-  interviewController.startInterview,
-);
+  app.post(
+    "/",
+    { preHandler: [httpAuth, validate({ body: startInterviewBody })] },
+    interviewController.startInterview,
+  );
 
-/**
- * @route   POST /api/interviews/:sessionId/events
- * @desc    Log an event during the interview (must own the session)
- * @access  Private
- */
-router.post(
-  "/:sessionId/events",
-  httpAuth,
-  validate({ params: sessionIdParams, body: logEventBody }),
-  interviewController.logEvent,
-);
+  app.post(
+    "/:sessionId/events",
+    {
+      preHandler: [
+        httpAuth,
+        validate({ params: sessionIdParams, body: logEventBody }),
+      ],
+    },
+    interviewController.logEvent,
+  );
 
-/**
- * @route   POST /api/interviews/:sessionId/end
- * @desc    End interview and generate evaluation (must own the session)
- * @access  Private
- */
-router.post(
-  "/:sessionId/end",
-  httpAuth,
-  validate({ params: sessionIdParams }),
-  interviewController.endInterview,
-);
+  app.post(
+    "/:sessionId/end",
+    { preHandler: [httpAuth, validate({ params: sessionIdParams })] },
+    interviewController.endInterview,
+  );
 
-/**
- * @route   GET /api/interviews/:sessionId/evaluation
- * @desc    Get evaluation for a completed interview (must own the session)
- * @access  Private
- */
-router.get(
-  "/:sessionId/evaluation",
-  httpAuth,
-  validate({ params: sessionIdParams }),
-  interviewController.getEvaluation,
-);
-
-export default router;
+  app.get(
+    "/:sessionId/evaluation",
+    { preHandler: [httpAuth, validate({ params: sessionIdParams })] },
+    interviewController.getEvaluation,
+  );
+}

@@ -1,39 +1,35 @@
-import type { Request, Response, NextFunction } from "express";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import { validateSessionFromHeaders } from "../lib/auth";
 
-export async function httpAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
+/**
+ * Fastify preHandler hook: authenticates from request headers and sets
+ * request.user. Replies 401 (and halts the lifecycle) when unauthenticated.
+ */
+export async function httpAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
-    req.user = await validateSessionFromHeaders(req.headers);
-    next();
+    request.user = await validateSessionFromHeaders(request.headers);
   } catch {
-    res.status(401).json({ error: "Unauthorized" });
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 }
 
-export function isAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: "Unauthorized" });
+export async function isAdmin(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.user) {
+    return reply.code(401).send({ error: "Unauthorized" });
   }
-
-  if (req.user.role !== "ADMIN") {
-    return res.status(403).json({ error: "Admin access only" });
+  if (request.user.role !== "ADMIN") {
+    return reply.code(403).send({ error: "Admin access only" });
   }
-
-  next();
 }
 
-export function isInterviewer(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: "Unauthorized" });
+export async function isInterviewer(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (!request.user) {
+    return reply.code(401).send({ error: "Unauthorized" });
   }
-
-  if (req.user.role !== "INTERVIEWER" && req.user.role !== "ADMIN") {
-    return res.status(403).json({ error: "Interviewer access only" });
+  if (request.user.role !== "INTERVIEWER" && request.user.role !== "ADMIN") {
+    return reply.code(403).send({ error: "Interviewer access only" });
   }
-
-  next();
 }

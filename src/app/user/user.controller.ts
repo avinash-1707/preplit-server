@@ -1,24 +1,27 @@
-import type { Request, Response } from "express";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import { getUserInsightByUserId } from "./user.service";
 import { ok, err } from "../../contract/envelope";
 
-export async function getUserInsightsController(req: Request, res: Response) {
+export async function getUserInsightsController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
   try {
-    const userId = req.user?.id; // set by auth middleware
+    const userId = request.user?.id; // set by httpAuth preHandler
 
     if (!userId) {
-      return res.status(401).json(err("Unauthorized", "UNAUTHORIZED"));
+      return reply.code(401).send(err("Unauthorized", "UNAUTHORIZED"));
     }
 
     const insight = await getUserInsightByUserId(userId);
 
     if (!insight) {
-      return res.status(404).json(err("No insights found", "NOT_FOUND"));
+      return reply.code(404).send(err("No insights found", "NOT_FOUND"));
     }
 
-    return res.status(200).json(ok(insight));
+    return reply.code(200).send(ok(insight));
   } catch (error) {
     console.error("Get user insights error:", error);
-    return res.status(500).json(err("Internal server error", "INTERNAL"));
+    return reply.code(500).send(err("Internal server error", "INTERNAL"));
   }
 }
